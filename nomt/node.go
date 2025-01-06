@@ -22,6 +22,12 @@ func (n *Node) IsZero() bool {
 	return bytes.Equal(n[:], Zero[:])
 }
 
+func (n *Node) MarkDirty() {
+	// Mark the node as dirty by setting the most significant bit to 1.
+	// This means it cannot be a leaf node.
+	n[0] |= 0x80
+}
+
 type LeafNode struct {
 	_        byte // ignored
 	KeyLen   byte

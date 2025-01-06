@@ -35,3 +35,26 @@ func TestPadKey(t *testing.T) {
 	t.Logf("Padded key: %s", BytesToBinaryString(padded))
 	require.Equal(t, "00011010000001100001010100101100000110110000011000111100", BytesToBinaryString(padded))
 }
+
+func TestPutGet(t *testing.T) {
+	tr := NewTree()
+
+	keys := []string{
+		"001", "010", "011", "100", "101", "110", "111",
+	}
+	values := []string{
+		"foo01", "foo02", "foo03", "foo04", "foo05", "foo06", "foo07",
+	}
+
+	for i, k := range keys {
+		key := []byte(k)
+		value := []byte(values[i])
+		tr.Put(key, value)
+
+		valBuf := make([]byte, 256)
+		val, ok := tr.Get(key, valBuf)
+		require.True(t, ok, "key %s", k)
+
+		require.Equal(t, value, val)
+	}
+}

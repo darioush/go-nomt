@@ -5,7 +5,10 @@ import (
 	"unsafe"
 )
 
-const MaxKeyLen = 64
+const (
+	MaxKeyLen       = 64
+	MaxKeyLenPadded = (MaxKeyLen*8 + 5) / 6
+)
 
 var Zero Node
 
@@ -118,4 +121,91 @@ func (t *Tree) Get(key []byte, valBuf []byte) ([]byte, bool) {
 		return nil, false
 	}
 	return leaf.GetValue(valBuf, t.Datastore), true
+}
+
+func (t *Tree) Put(key, value []byte) {
+	paddedKey, partialBits := PadKey(key)
+	pageIdx := 0
+	// The last byte in the padded key always indexes into the page.
+	// This page may be the root page or a page with a path that is a prefix of the key.
+
+	page := t.Pages[""] // start at the root
+	for pageIdx < len(paddedKey)-1 {
+		// If this node is not set, the continuation page does not exist.
+		node := page.Nodes[indexOf(paddedKey[pageIdx], fullBits)]
+		if node.IsZero() || node.IsLeaf() {
+			break
+		}
+		pageIdx++
+		page = t.Pages[string(paddedKey[:pageIdx])]
+	}
+
+	bits := byte(fullBits)
+	if pageIdx == len(paddedKey)-1 {
+		bits = byte(fullBits - partialBits)
+	}
+	getOrAllocate := func(paddedKey []byte, pathLen byte) *Node {
+		if pathLen == fullBits {
+			// Need a new page
+			newPage := &Page{}
+			pageIdx++
+			t.Pages[string(paddedKey[:pageIdx])] = newPage
+			// Since this is a new page, 1 bits is used here.
+			return &newPage.Nodes[indexOf(paddedKey[pageIdx], 1)]
+		}
+		return &page.Nodes[indexOf(paddedKey[pageIdx], pathLen+1)]
+	}
+
+	pathLen := page.nonZeroPathBitLen(paddedKey[pageIdx], bits)
+	if pathLen == 0 {
+		// Create a new leaf node at pathLen+1
+		ptr := getOrAllocate(paddedKey, pathLen)
+		leafNode := (*LeafNode)(unsafe.Pointer(ptr))
+		leafNode.PutKeyValue(key, value, t.Datastore)
+		return
+	}
+
+	node := &page.Nodes[indexOf(paddedKey[pageIdx], pathLen)]
+	if !node.IsLeaf() {
+		ptr := getOrAllocate(paddedKey, pathLen)
+		leafNode := (*LeafNode)(unsafe.Pointer(ptr))
+		leafNode.PutKeyValue(key, value, t.Datastore)
+		return
+	}
+
+	var keyBuf [MaxKeyLen]byte
+	foundKey := keyBuf[:]
+	leaf := (*LeafNode)(unsafe.Pointer(node))
+	foundKey = leaf.GetKey(foundKey, t.Datastore)
+	if bytes.Equal(foundKey, key) {
+		leaf.PutValue(value, t.Datastore)
+		return
+	}
+
+	// Split the leaf node
+	foundKeyPadded, _ := PadKey(foundKey)
+	// Up until pageIdx:pathLen, the keys are guaranteed to be the same.
+	// We need to find the first bit where the keys differ.
+	var nextNode *Node
+	for {
+		nextNode = getOrAllocate(paddedKey, pathLen)
+		if pathLen == fullBits {
+			// new page was allocated
+			pathLen = 0
+		}
+		if paddedKey[pageIdx]&(1<<(fullBits-pathLen-1)) != foundKeyPadded[pageIdx]&(1<<(fullBits-pathLen-1)) {
+			break
+		}
+		nextNode.MarkDirty()
+		pathLen++
+	}
+	// At pathLen, the keys differ.
+	// Note keys MUST not be prefixes of each other.
+	leafNode := (*LeafNode)(unsafe.Pointer(nextNode))
+	leafNode.PutKeyValue(key, value, t.Datastore)
+
+	copyNode := getOrAllocate(foundKeyPadded, pathLen)
+	*copyNode = *node
+
+	node.MarkDirty() // Mark the old leaf node as dirty (internal node)
 }
