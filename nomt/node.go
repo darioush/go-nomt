@@ -1,37 +1,141 @@
 package nomt
 
-// Page is a 4KB block of data
-// Contains 128-2=126 merkle tree nodes of 32 bytes each
-// Root must be stored separately (or in the parent page)
-// Last 64 bytes are reserved for metadata.
-type Page struct {
-	Nodes [126][32]byte
-	_     [64]byte
+import (
+	"bytes"
+)
+
+type (
+	Node       [32]byte
+	ChunkIndex [3]byte
+)
+
+func (c *ChunkIndex) AsInt() int {
+	return int(c[0])<<16 | int(c[1])<<8 | int(c[2])
 }
 
-// PadKey adds padding to the key such that:
-// - Each 6 bits of the key are stored in the lower 6 bits of a byte.
-// - The upper 2 bits of the byte are set to 0.
-func PadKey(key []byte) ([]byte, bool) {
-	out := make([]byte, (len(key)*8+5)/6) // ceil(len(key)*8/6)
-	idx := 0
-	for i, k := range key {
-		switch i % 3 {
-		case 0:
-			out[idx] = k >> 2
-			idx++
-			out[idx] = (k & 0x03) << 4
-		case 1:
-			out[idx] |= k >> 4
-			idx++
-			out[idx] = (k & 0x0f) << 2
-		case 2:
-			out[idx] |= k >> 6
-			idx++
-			out[idx] = k & 0x3f
-			idx++
+func (n *Node) IsLeaf() bool {
+	// Leaf nodes have most significant bit set to 0.
+	return n[0]>>7 == 0
+}
+
+func (n *Node) IsZero() bool {
+	return bytes.Equal(n[:], Zero[:])
+}
+
+type LeafNode struct {
+	_        byte // ignored
+	KeyLen   byte
+	ValueLen byte
+	Chunks   [9]ChunkIndex
+	_        [2]byte // ignored
+}
+
+func (l *LeafNode) Put(key, value []byte, db *Datastore) {
+	pos, chunk := 0, 0
+	for pos < len(key) {
+		last := pos + ChunkSize
+		if last > len(key) {
+			last = len(key)
+		} else {
+			chunk++
+		}
+		pos = pos + copy(db.Data[l.Chunks[chunk].AsInt()][:], key[pos:last])
+	}
+
+	for pos < len(key)+len(value) {
+		last := pos + ChunkSize
+		if last > len(key)+len(value) {
+			last = len(key) + len(value)
+		} else {
+			chunk++
+		}
+		pos = pos + copy(db.Data[l.Chunks[chunk].AsInt()][:], value[pos-len(key):last-len(key)])
+	}
+}
+
+func (l *LeafNode) get(buf []byte, startChunk int, length int, db *Datastore) {
+	pos, chunk := 0, startChunk
+	for pos < length {
+		last := pos + ChunkSize
+		if last > length {
+			last = length
+		} else {
+			chunk++
+		}
+		pos = pos + copy(buf[pos:last], db.Data[l.Chunks[chunk].AsInt()][:])
+	}
+}
+
+func (l *LeafNode) put(buf []byte, startChunk int, length int, db *Datastore) {
+	pos, chunk := 0, startChunk
+	for pos < length {
+		last := pos + ChunkSize
+		if last > length {
+			last = length
+		} else {
+			chunk++
+		}
+		pos = pos + copy(db.Data[l.Chunks[chunk].AsInt()][:], buf[pos:last])
+	}
+}
+
+func (l *LeafNode) valueStartChunk() int {
+	return (int(l.KeyLen) + ChunkSize - 1) / ChunkSize
+}
+
+func (l *LeafNode) GetKey(buf []byte, db *Datastore) []byte {
+	l.get(buf, 0, int(l.KeyLen), db)
+	return buf[:l.KeyLen]
+}
+
+func (l *LeafNode) GetValue(buf []byte, db *Datastore) []byte {
+	l.get(buf, l.valueStartChunk(), int(l.ValueLen), db)
+	return buf[:l.ValueLen]
+}
+
+func (l *LeafNode) PutValue(value []byte, db *Datastore) {
+	l.allocExact(
+		numChunks(int(l.KeyLen), int(l.ValueLen)),
+		numChunks(int(l.KeyLen), len(value)),
+		db,
+	)
+	l.ValueLen = byte(len(value))
+	l.put(value, l.valueStartChunk(), len(value), db)
+}
+
+func (l *LeafNode) PutKeyValue(key, value []byte, db *Datastore) {
+	l.allocExact(
+		numChunks(int(l.KeyLen), int(l.ValueLen)),
+		numChunks(len(key), len(value)),
+		db,
+	)
+	l.KeyLen = byte(len(key))
+	l.ValueLen = byte(len(value))
+
+	l.put(key, 0, len(key), db)
+	l.put(value, l.valueStartChunk(), len(value), db)
+}
+
+func numChunks(keyLen, valueLen int) int {
+	keyChunks := (keyLen + ChunkSize - 1) / ChunkSize
+	valueChunks := (valueLen + ChunkSize - 1) / ChunkSize
+	return keyChunks + valueChunks
+}
+
+func (l *LeafNode) allocExact(current, want int, d *Datastore) {
+	if want > current {
+		for i := current; i < want; i++ {
+			newChunkIndex := d.Alloc()
+			l.Chunks[i] = ChunkIndex{byte(newChunkIndex >> 16), byte(newChunkIndex >> 8), byte(newChunkIndex)}
+		}
+	} else if want < current {
+		for i := want; i < current; i++ {
+			d.Free(l.Chunks[i].AsInt())
+			l.Chunks[i] = ChunkIndex{}
 		}
 	}
-	hasPartial := len(key)%3 != 0
-	return out, hasPartial
+}
+
+func (l *LeafNode) Free(d *Datastore) {
+	l.allocExact(numChunks(int(l.KeyLen), int(l.ValueLen)), 0, d)
 }

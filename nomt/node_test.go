@@ -1,34 +1,36 @@
 package nomt
 
 import (
-	"fmt"
-	"strings"
 	"testing"
-	"unsafe"
 
 	"github.com/stretchr/testify/require"
 )
 
-func TestPageSize(t *testing.T) {
-	pageSize := unsafe.Sizeof(Page{})
-	t.Logf("Page size: %d bytes", pageSize)
+func TestChunkIndexAsInt(t *testing.T) {
+	chunkIdx := ChunkIndex([3]byte{0, 1, 0})
+	require.Equal(t, int(0x0100), chunkIdx.AsInt())
 }
 
-func BytesToBinaryString(data []byte) string {
-	var sb strings.Builder
-	for _, b := range data {
-		sb.WriteString(fmt.Sprintf("%08b", b))
-	}
-	return sb.String()
-}
+func TestLeafNodeChunks(t *testing.T) {
+	d := New()
+	leafNode := LeafNode{}
 
-func TestPadKey(t *testing.T) {
-	key := []byte("hello")
-	padded, partial := PadKey(key)
-	require.True(t, partial)
+	k := []byte("hello")
+	v := []byte("world")
+	leafNode.PutKeyValue(k, v, d)
 
-	t.Logf("Original key: %s", BytesToBinaryString(key))
-	require.Equal(t, "0110100001100101011011000110110001101111", BytesToBinaryString(key))
-	t.Logf("Padded key: %s", BytesToBinaryString(padded))
-	require.Equal(t, "00011010000001100001010100101100000110110000011000111100", BytesToBinaryString(padded))
+	var keyBuf [MaxKeyLen]byte
+	key := keyBuf[:]
+	key = leafNode.GetKey(key, d)
+	require.Equal(t, k, key)
+
+	var valueBuf [256]byte
+	val := valueBuf[:]
+	val = leafNode.GetValue(val, d)
+	require.Equal(t, v, val)
+
+	v2 := []byte("world2")
+	leafNode.PutKeyValue(k, v2, d)
+	val = leafNode.GetValue(val, d)
+	require.Equal(t, v2, val)
 }
