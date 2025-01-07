@@ -2,6 +2,7 @@ package nomt
 
 import (
 	"bytes"
+	"fmt"
 	"unsafe"
 )
 
@@ -21,6 +22,12 @@ const fullBits = 6
 type Page struct {
 	Nodes [126]Node
 	_     [64]byte
+}
+
+func (p *Page) print() {
+	for i, node := range p.Nodes {
+		fmt.Printf("%d: %x\n", i, node)
+	}
 }
 
 func (p *Page) nonZeroPathBitLen(query byte, bitLen byte) byte {
@@ -147,11 +154,11 @@ func (t *Tree) Put(key, value []byte) {
 	getOrAllocate := func(paddedKey []byte, pathLen byte) *Node {
 		if pathLen == fullBits {
 			// Need a new page
-			newPage := &Page{}
+			page = &Page{}
 			pageIdx++
-			t.Pages[string(paddedKey[:pageIdx])] = newPage
+			t.Pages[string(paddedKey[:pageIdx])] = page
 			// Since this is a new page, 1 bits is used here.
-			return &newPage.Nodes[indexOf(paddedKey[pageIdx], 1)]
+			return &page.Nodes[indexOf(paddedKey[pageIdx], 1)]
 		}
 		return &page.Nodes[indexOf(paddedKey[pageIdx], pathLen+1)]
 	}
@@ -208,4 +215,11 @@ func (t *Tree) Put(key, value []byte) {
 	*copyNode = *node
 
 	node.MarkDirty() // Mark the old leaf node as dirty (internal node)
+}
+
+func (t *Tree) print() {
+	for path, page := range t.Pages {
+		fmt.Printf("Path: %x\n", path)
+		page.print()
+	}
 }

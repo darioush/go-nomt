@@ -65,10 +65,10 @@ func (l *LeafNode) get(buf []byte, startChunk int, length int, db *Datastore) {
 		last := pos + ChunkSize
 		if last > length {
 			last = length
-		} else {
-			chunk++
 		}
-		pos = pos + copy(buf[pos:last], db.Data[l.Chunks[chunk].AsInt()][:])
+		chunkID := l.Chunks[chunk].AsInt()
+		pos = pos + copy(buf[pos:last], db.Data[chunkID][:])
+		chunk++
 	}
 }
 
@@ -78,10 +78,10 @@ func (l *LeafNode) put(buf []byte, startChunk int, length int, db *Datastore) {
 		last := pos + ChunkSize
 		if last > length {
 			last = length
-		} else {
-			chunk++
 		}
-		pos = pos + copy(db.Data[l.Chunks[chunk].AsInt()][:], buf[pos:last])
+		chunkID := l.Chunks[chunk].AsInt()
+		pos = pos + copy(db.Data[chunkID][:], buf[pos:last])
+		chunk++
 	}
 }
 

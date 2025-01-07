@@ -2,11 +2,13 @@ package nomt
 
 import (
 	"fmt"
+	"math/rand"
 	"strings"
 	"testing"
 	"unsafe"
 
 	"github.com/stretchr/testify/require"
+	"golang.org/x/crypto/sha3"
 )
 
 func TestPageSize(t *testing.T) {
@@ -56,5 +58,79 @@ func TestPutGet(t *testing.T) {
 		require.True(t, ok, "key %s", k)
 
 		require.Equal(t, value, val)
+	}
+}
+
+func TestPutGetRandom(t *testing.T) {
+	r := rand.New(rand.NewSource(1))
+	hasher := sha3.NewLegacyKeccak256()
+
+	getKey := func(keyIdx int) []byte {
+		k := fmt.Sprintf("key-%d", keyIdx)
+		hasher.Write([]byte(k))
+		hash := hasher.Sum(nil)
+		hasher.Reset()
+		return hash
+	}
+
+	nextKeyIdx := 0
+	nextKey := func() []byte {
+		key := getKey(nextKeyIdx)
+		nextKeyIdx++
+		return key
+	}
+
+	randomVal := func() []byte {
+		v := make([]byte, r.Intn(256))
+		r.Read(v)
+		return v
+	}
+
+	var valBuf [256]byte
+	gotVal := valBuf[:]
+
+	tr := NewTree()
+	mapStore := make(map[string]string)
+	checkEach := 100
+	verbose := false
+	for i := 0; i < 10_000; i++ {
+		if i%2 == 0 {
+			key, value := nextKey(), randomVal()
+			if verbose {
+				t.Logf("Op: Put %x -> %x", key, value)
+			}
+			tr.Put(key, value)
+			gotVal, ok := tr.Get(key, gotVal)
+			require.True(t, ok)
+			require.Equal(t, value, gotVal)
+			mapStore[string(key)] = string(value)
+		} else {
+			keyIdx := rand.Intn(len(mapStore))
+			key := getKey(keyIdx)
+			gotVal, ok := tr.Get([]byte(key), gotVal)
+			require.True(t, ok)
+			require.Equal(t, []byte(mapStore[string(key)]), gotVal)
+			value := randomVal()
+			if verbose {
+				t.Logf("Op: Update %x -> %x", key, value)
+			}
+			tr.Put([]byte(key), value)
+
+			gotVal, ok = tr.Get([]byte(key), gotVal)
+			require.True(t, ok)
+			require.Equal(t, value, gotVal)
+			mapStore[string(key)] = string(value)
+		}
+
+		if (i+1)%checkEach == 0 {
+			if verbose {
+				t.Logf("Op: Check all (%d ops)", i+1)
+			}
+			for key, value := range mapStore {
+				gotVal, ok := tr.Get([]byte(key), gotVal)
+				require.True(t, ok)
+				require.Equal(t, []byte(value), gotVal)
+			}
+		}
 	}
 }
