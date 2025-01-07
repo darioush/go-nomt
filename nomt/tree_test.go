@@ -87,7 +87,6 @@ func TestPutGetRandom(t *testing.T) {
 	}
 
 	var valBuf [256]byte
-	gotVal := valBuf[:]
 
 	tr := NewTree()
 	mapStore := make(map[string]string)
@@ -99,14 +98,20 @@ func TestPutGetRandom(t *testing.T) {
 			if verbose {
 				t.Logf("Op: Put %x -> %x", key, value)
 			}
+			gotVal := valBuf[:]
+			_, ok := tr.Get(key, gotVal)
+			require.False(t, ok)
+
 			tr.Put(key, value)
-			gotVal, ok := tr.Get(key, gotVal)
+			gotVal = valBuf[:]
+			gotVal, ok = tr.Get(key, gotVal)
 			require.True(t, ok)
 			require.Equal(t, value, gotVal)
 			mapStore[string(key)] = string(value)
 		} else {
 			keyIdx := rand.Intn(len(mapStore))
 			key := getKey(keyIdx)
+			gotVal := valBuf[:]
 			gotVal, ok := tr.Get([]byte(key), gotVal)
 			require.True(t, ok)
 			require.Equal(t, []byte(mapStore[string(key)]), gotVal)
@@ -127,6 +132,7 @@ func TestPutGetRandom(t *testing.T) {
 				t.Logf("Op: Check all (%d ops)", i+1)
 			}
 			for key, value := range mapStore {
+				gotVal := valBuf[:]
 				gotVal, ok := tr.Get([]byte(key), gotVal)
 				require.True(t, ok)
 				require.Equal(t, []byte(value), gotVal)
