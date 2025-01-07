@@ -1,30 +1,30 @@
 package nomt
 
 const (
-	MaxChunks = 1 << 24
-	ChunkSize = 32
+	MaxChunks = 1 << 32
+	ChunkSize = 64
 )
 
 type Datastore struct {
 	Data        [MaxChunks][ChunkSize]byte
-	FreeList    [MaxChunks]int32
+	FreeList    [MaxChunks]uint32
 	FreeListIdx int
 }
 
 func New() *Datastore {
 	datastore := &Datastore{}
-	for i := 0; i < MaxChunks; i++ {
+	for i := uint32(0); i < i+1; i++ { // Go to max uint32
 		datastore.Free(i)
 	}
 	return datastore
 }
 
-func (d *Datastore) Free(idx int) {
-	d.FreeList[d.FreeListIdx] = int32(idx)
+func (d *Datastore) Free(idx uint32) {
+	d.FreeList[d.FreeListIdx] = idx
 	d.FreeListIdx++
 }
 
-func (d *Datastore) Alloc() int {
+func (d *Datastore) Alloc() uint32 {
 	d.FreeListIdx--
-	return int(d.FreeList[d.FreeListIdx])
+	return d.FreeList[d.FreeListIdx]
 }

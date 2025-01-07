@@ -6,11 +6,11 @@ import (
 
 type (
 	Node       [32]byte
-	ChunkIndex [3]byte
+	ChunkIndex [4]byte
 )
 
-func (c *ChunkIndex) AsInt() int {
-	return int(c[0])<<16 | int(c[1])<<8 | int(c[2])
+func (c *ChunkIndex) AsInt() uint32 {
+	return uint32(c[0])<<24 | uint32(c[1])<<16 | uint32(c[2])<<8 | uint32(c[3])
 }
 
 func (n *Node) IsLeaf() bool {
@@ -32,70 +32,52 @@ type LeafNode struct {
 	_        byte // ignored
 	KeyLen   byte
 	ValueLen byte
-	Chunks   [9]ChunkIndex
-	_        [2]byte // ignored
+	Chunks   [7]ChunkIndex
+	_        [1]byte // ignored
 }
 
-func (l *LeafNode) Put(key, value []byte, db *Datastore) {
-	pos, chunk := 0, 0
-	for pos < len(key) {
-		last := pos + ChunkSize
-		if last > len(key) {
-			last = len(key)
-		} else {
-			chunk++
-		}
-		pos = pos + copy(db.Data[l.Chunks[chunk].AsInt()][:], key[pos:last])
-	}
-
-	for pos < len(key)+len(value) {
-		last := pos + ChunkSize
-		if last > len(key)+len(value) {
-			last = len(key) + len(value)
-		} else {
-			chunk++
-		}
-		pos = pos + copy(db.Data[l.Chunks[chunk].AsInt()][:], value[pos-len(key):last-len(key)])
-	}
-}
-
-func (l *LeafNode) get(buf []byte, startChunk int, length int, db *Datastore) {
+func (l *LeafNode) get(buf []byte, startChunk, chunkPos int, length int, db *Datastore) {
 	pos, chunk := 0, startChunk
 	for pos < length {
-		last := pos + ChunkSize
+		last := pos + (ChunkSize - chunkPos)
 		if last > length {
 			last = length
 		}
 		chunkID := l.Chunks[chunk].AsInt()
-		pos = pos + copy(buf[pos:last], db.Data[chunkID][:])
+		pos = pos + copy(buf[pos:last], db.Data[chunkID][chunkPos:])
 		chunk++
+		chunkPos = 0 // reading next chunk always starts at the beginning
 	}
 }
 
-func (l *LeafNode) put(buf []byte, startChunk int, length int, db *Datastore) {
+func (l *LeafNode) put(buf []byte, startChunk, chunkPos int, length int, db *Datastore) {
 	pos, chunk := 0, startChunk
 	for pos < length {
-		last := pos + ChunkSize
+		last := pos + (ChunkSize - chunkPos)
 		if last > length {
 			last = length
 		}
 		chunkID := l.Chunks[chunk].AsInt()
-		pos = pos + copy(db.Data[chunkID][:], buf[pos:last])
+		pos = pos + copy(db.Data[chunkID][chunkPos:], buf[pos:last])
 		chunk++
+		chunkPos = 0 // writing next chunk always starts at the beginning
 	}
 }
 
-func (l *LeafNode) valueStartChunk() int {
-	return (int(l.KeyLen) + ChunkSize - 1) / ChunkSize
+func (l *LeafNode) valueStart() (int, int) {
+	chunk := int(l.KeyLen) / ChunkSize
+	chunkPos := int(l.KeyLen) % ChunkSize
+	return int(chunk), chunkPos
 }
 
 func (l *LeafNode) GetKey(buf []byte, db *Datastore) []byte {
-	l.get(buf, 0, int(l.KeyLen), db)
+	l.get(buf, 0, 0, int(l.KeyLen), db)
 	return buf[:l.KeyLen]
 }
 
 func (l *LeafNode) GetValue(buf []byte, db *Datastore) []byte {
-	l.get(buf, l.valueStartChunk(), int(l.ValueLen), db)
+	chunk, chunkPos := l.valueStart()
+	l.get(buf, chunk, chunkPos, int(l.ValueLen), db)
 	return buf[:l.ValueLen]
 }
 
@@ -106,7 +88,8 @@ func (l *LeafNode) PutValue(value []byte, db *Datastore) {
 		db,
 	)
 	l.ValueLen = byte(len(value))
-	l.put(value, l.valueStartChunk(), len(value), db)
+	chunk, chunkPos := l.valueStart()
+	l.put(value, chunk, chunkPos, len(value), db)
 }
 
 func (l *LeafNode) PutKeyValue(key, value []byte, db *Datastore) {
@@ -118,21 +101,20 @@ func (l *LeafNode) PutKeyValue(key, value []byte, db *Datastore) {
 	l.KeyLen = byte(len(key))
 	l.ValueLen = byte(len(value))
 
-	l.put(key, 0, len(key), db)
-	l.put(value, l.valueStartChunk(), len(value), db)
+	l.put(key, 0, 0, len(key), db)
+	chunk, chunkPos := l.valueStart()
+	l.put(value, chunk, chunkPos, len(value), db)
 }
 
 func numChunks(keyLen, valueLen int) int {
-	keyChunks := (keyLen + ChunkSize - 1) / ChunkSize
-	valueChunks := (valueLen + ChunkSize - 1) / ChunkSize
-	return keyChunks + valueChunks
+	return (keyLen + valueLen + ChunkSize - 1) / ChunkSize
 }
 
 func (l *LeafNode) allocExact(current, want int, d *Datastore) {
 	if want > current {
 		for i := current; i < want; i++ {
 			newChunkIndex := d.Alloc()
-			l.Chunks[i] = ChunkIndex{byte(newChunkIndex >> 16), byte(newChunkIndex >> 8), byte(newChunkIndex)}
+			l.Chunks[i] = ChunkIndex{byte(newChunkIndex >> 24), byte(newChunkIndex >> 16), byte(newChunkIndex >> 8), byte(newChunkIndex)}
 		}
 	} else if want < current {
 		for i := want; i < current; i++ {
