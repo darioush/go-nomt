@@ -46,8 +46,8 @@ func (p *Page) nonZeroPathBitLen(query byte, bitLen byte) byte {
 // - Each 6 bits of the key are stored in the lower 6 bits of a byte.
 // - The upper 2 bits of the byte are set to 0.
 // Returns the padded key and the number of partial bits in the last byte.
-func PadKey(key []byte) ([]byte, int) {
-	out := make([]byte, (len(key)*8+5)/6) // ceil(len(key)*8/6)
+func PadKey(key, out []byte) ([]byte, int) {
+	_ = out[(len(key)*8+5)/6] // bounds check elimination, ceil(len(key)*8/6) == len(out)
 	idx := 0
 	for i, k := range key {
 		switch i % 3 {
@@ -66,7 +66,7 @@ func PadKey(key []byte) ([]byte, int) {
 			idx++
 		}
 	}
-	return out, 2 * (len(key) % 3)
+	return out[:idx+1], 2 * (len(key) % 3)
 }
 
 // indexOf returns the index of the query byte in the page array.
@@ -91,7 +91,9 @@ func NewTree() *Tree {
 }
 
 func (t *Tree) Get(key []byte, valBuf []byte) ([]byte, bool) {
-	paddedKey, partialBits := PadKey(key)
+	var paddedKeyBuf [MaxKeyLenPadded]byte
+	paddedKey := paddedKeyBuf[:]
+	paddedKey, partialBits := PadKey(key, paddedKey)
 	pageIdx := 0
 	// The last byte in the padded key always indexes into the page.
 	// This page may be the root page or a page with a path that is a prefix of the key.
@@ -131,7 +133,9 @@ func (t *Tree) Get(key []byte, valBuf []byte) ([]byte, bool) {
 }
 
 func (t *Tree) Put(key, value []byte) {
-	paddedKey, partialBits := PadKey(key)
+	var paddedKeyBuf [MaxKeyLenPadded]byte
+	paddedKey := paddedKeyBuf[:]
+	paddedKey, partialBits := PadKey(key, paddedKey)
 	pageIdx := 0
 	// The last byte in the padded key always indexes into the page.
 	// This page may be the root page or a page with a path that is a prefix of the key.
@@ -190,7 +194,9 @@ func (t *Tree) Put(key, value []byte) {
 	}
 
 	// Split the leaf node
-	foundKeyPadded, _ := PadKey(foundKey)
+	var foundKeyPaddedBuf [MaxKeyLenPadded]byte
+	foundKeyPadded := foundKeyPaddedBuf[:]
+	foundKeyPadded, _ = PadKey(foundKey, foundKeyPadded)
 	// Up until pageIdx:pathLen, the keys are guaranteed to be the same.
 	// We need to find the first bit where the keys differ.
 	var nextNode *Node

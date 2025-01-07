@@ -1,6 +1,7 @@
 package nomt
 
 import (
+	"encoding/binary"
 	"fmt"
 	"math/rand"
 	"strings"
@@ -28,8 +29,10 @@ func BytesToBinaryString(data []byte) string {
 }
 
 func TestPadKey(t *testing.T) {
+	var paddedBuf [MaxKeyLenPadded]byte
 	key := []byte("hello")
-	padded, partial := PadKey(key)
+	padded := paddedBuf[:]
+	padded, partial := PadKey(key, padded)
 	require.Equal(t, 4, partial)
 
 	t.Logf("Original key: %s", BytesToBinaryString(key))
@@ -139,4 +142,76 @@ func TestPutGetRandom(t *testing.T) {
 			}
 		}
 	}
+}
+
+func BenchmarkPut(b *testing.B) {
+	hasher := sha3.NewLegacyKeccak256()
+
+	getKey := func(keyIdx int, buf []byte) {
+		pos := copy(buf, "key-")
+		binary.BigEndian.PutUint64(buf[pos:], uint64(keyIdx))
+		hasher.Write(buf[:pos+8])
+		hash := hasher.Sum(nil)
+		hasher.Reset()
+
+		copy(buf, hash)
+	}
+
+	for _, initialSize := range []int{100, 1_000, 10_000, 100_000, 1_000_000} {
+		b.Run(fmt.Sprintf("InitialSize-%d", initialSize), func(b *testing.B) {
+			tr := NewTree()
+			var keyBuf [32]byte
+			var value [255]byte
+			maxKey := 1 << 19
+			for i := 0; i < initialSize; i++ {
+				getKey(i%maxKey, keyBuf[:])
+				binary.BigEndian.PutUint64(value[:], uint64(i))
+				tr.Put(keyBuf[:], value[:])
+			}
+
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				getKey((initialSize+i)%maxKey, keyBuf[:])
+				binary.BigEndian.PutUint64(value[:], uint64(i))
+				tr.Put(keyBuf[:], value[:])
+			}
+		})
+	}
+
+}
+
+func BenchmarkGet(b *testing.B) {
+	hasher := sha3.NewLegacyKeccak256()
+
+	getKey := func(keyIdx int, buf []byte) {
+		pos := copy(buf, "key-")
+		binary.BigEndian.PutUint64(buf[pos:], uint64(keyIdx))
+		hasher.Write(buf[:pos+8])
+		hash := hasher.Sum(nil)
+		hasher.Reset()
+
+		copy(buf, hash)
+	}
+
+	for _, initialSize := range []int{100, 1_000, 10_000, 100_000, 1_000_000} {
+		b.Run(fmt.Sprintf("InitialSize-%d", initialSize), func(b *testing.B) {
+			tr := NewTree()
+			var keyBuf [32]byte
+			var value [255]byte
+			for i := 0; i < initialSize; i++ {
+				getKey(i, keyBuf[:])
+				binary.BigEndian.PutUint64(value[:], uint64(i))
+				tr.Put(keyBuf[:], value[:])
+			}
+
+			b.ResetTimer()
+			for i := 0; i < b.N; i++ {
+				getKey(i%initialSize, keyBuf[:])
+				gotVal, ok := tr.Get(keyBuf[:], value[:])
+				require.True(b, ok)
+				require.Equal(b, i%initialSize, int(binary.BigEndian.Uint64(gotVal)))
+			}
+		})
+	}
+
 }
