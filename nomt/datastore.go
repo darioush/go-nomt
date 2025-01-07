@@ -1,7 +1,7 @@
 package nomt
 
 const (
-	MaxChunks = 1 << 32
+	MaxChunks = 1 << 28
 	ChunkSize = 64
 )
 
@@ -13,7 +13,7 @@ type Datastore struct {
 
 func New() *Datastore {
 	datastore := &Datastore{}
-	for i := uint32(0); i < i+1; i++ { // Go to max uint32
+	for i := uint32(0); i < MaxChunks; i++ {
 		datastore.Free(i)
 	}
 	return datastore
