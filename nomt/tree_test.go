@@ -1,9 +1,11 @@
 package nomt
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"math/rand"
+	"slices"
 	"strings"
 	"testing"
 	"unsafe"
@@ -234,9 +236,9 @@ func BenchmarkHash(b *testing.B) {
 
 	tr := NewTree()
 	currentSize := 0
-	for _, initialSize := range []int{100, 1_000, 10_000, 100_000, 1_000_000, 4_000_000, 16_000_000, 32_000_000, 64_000_000} {
+	for _, initialSize := range []int{100_000, 1_000_000, 4_000_000, 16_000_000, 32_000_000, 64_000_000} {
 		r := rand.New(rand.NewSource(1))
-		const initialBatchSize = 20000
+		const initialBatchSize = 40000
 		var keyBatchBuf [initialBatchSize][32]byte
 		var keyBatch [initialBatchSize][]byte
 		b.Logf("Creating initial trie: %d -> %d", currentSize, initialSize)
@@ -248,6 +250,7 @@ func BenchmarkHash(b *testing.B) {
 			currentSize++
 
 			if i%initialBatchSize == initialBatchSize-1 {
+				slices.SortFunc(keyBatch[:], bytes.Compare)
 				tr.Hash(keyBatch[:])
 			}
 
@@ -257,7 +260,7 @@ func BenchmarkHash(b *testing.B) {
 		}
 
 		// batchSize must not be greater than initialBatchSize
-		for _, batchSize := range []int{10, 100, 200, 500, 1000} {
+		for _, batchSize := range []int{10, 100, 200, 500, 1000, 10_000, 40_000} {
 			b.Run(fmt.Sprintf("InitialSize-%d-BatchSize-%d", initialSize, batchSize), func(b *testing.B) {
 				b.ResetTimer()
 				for i := 0; i < b.N; i++ {
@@ -269,8 +272,10 @@ func BenchmarkHash(b *testing.B) {
 					tr.Put(keyBuf[:], value[:])
 
 					if i%batchSize == batchSize-1 {
+						slices.SortFunc(keyBatch[:batchSize], bytes.Compare)
 						tr.Hash(keyBatch[:batchSize])
 					} else if i+1 == b.N {
+						slices.SortFunc(keyBatch[:i%batchSize+1], bytes.Compare)
 						tr.Hash(keyBatch[:i%batchSize+1])
 					}
 				}
