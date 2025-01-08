@@ -254,7 +254,7 @@ func BenchmarkHash(b *testing.B) {
 				tr.Hash(keyBatch[:])
 			}
 
-			if currentSize%250_000 == 0 {
+			if currentSize%1_000_000 == 0 {
 				b.Logf("Size: %d", currentSize)
 			}
 		}
