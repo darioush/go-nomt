@@ -234,7 +234,7 @@ func BenchmarkHash(b *testing.B) {
 
 	tr := NewTree()
 	currentSize := 0
-	for _, initialSize := range []int{100_000, 1_000_000, 4_000_000, 16_000_000, 32_000_000, 64_000_000} {
+	for _, initialSize := range []int{100_000, 1_000_000, 4_000_000, 8_000_000} {
 		r := rand.New(rand.NewSource(1))
 		const initialBatchSize = 40000
 		var keyBatchBuf [initialBatchSize][32]byte
