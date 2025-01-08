@@ -39,6 +39,24 @@ func (n *Node) HashInto(h hash.Hash, d *Datastore) {
 	h.Write(value)
 }
 
+func (n *Node) HashBytes(out []byte, d *Datastore) int {
+	pos := 0
+	if !n.IsLeaf() {
+		pos += copy(out, n[:])
+		return pos
+	}
+
+	leaf := n.AsLeafNode()
+	out[pos] = leaf.KeyLen
+	pos++
+	out[pos] = leaf.ValueLen
+	pos++
+	pos += copy(out[pos:], leaf.GetKey(out[pos:], d))
+	pos += copy(out[pos:], leaf.GetValue(out[pos:], d))
+
+	return pos
+}
+
 func (n *Node) IsLeaf() bool {
 	// Leaf nodes have most significant bit set to 0.
 	return n[0]>>7 == 0

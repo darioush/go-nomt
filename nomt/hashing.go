@@ -1,8 +1,6 @@
 package nomt
 
 import (
-	"hash"
-
 	"golang.org/x/crypto/sha3"
 )
 
@@ -37,8 +35,6 @@ func commonPrefixBitLen(a, b []byte) int {
 // Hash returns the root node of a Merkle tree assuming
 // keys were updated. keys must be sorted lexicographically.
 func (t *Tree) Hash(keys [][]byte) Node {
-	h := sha3.NewLegacyKeccak256()
-
 	for i := 0; i < len(keys); i++ {
 		hashFrom := 0 // root node
 		if i+1 < len(keys) {
@@ -47,12 +43,12 @@ func (t *Tree) Hash(keys [][]byte) Node {
 			// with the next key.
 			hashFrom = commonPrefixBitLen(keys[i], keys[i+1])
 		}
-		t.hash(h, keys[i], hashFrom)
+		t.hash(keys[i], hashFrom)
 	}
 	return t.Root
 }
 
-func (t *Tree) hash(h hash.Hash, key []byte, hashFrom int) {
+func (t *Tree) hash(key []byte, hashFrom int) {
 	var paddedKeyBuf [MaxKeyLenPadded]byte
 	paddedKey := paddedKeyBuf[:]
 	paddedKey, partialBits := PadKey(key, paddedKey)
@@ -116,11 +112,13 @@ func (t *Tree) hash(h hash.Hash, key []byte, hashFrom int) {
 			parentIdx = indexOf(paddedKey[pageIdx], pathLen)
 			parent = &page.Nodes[parentIdx]
 		}
-		node0.HashInto(h, t.Datastore)
-		node1.HashInto(h, t.Datastore)
-		hash := parent[:]
-		h.Sum(hash[:0])
-		h.Reset()
+
+		var hashBytesBuf [2 + MaxKeyLen + MaxValueLen]byte
+		hashBytes := hashBytesBuf[:]
+		pos := node0.HashBytes(hashBytes, t.Datastore)
+		pos += node1.HashBytes(hashBytes[pos:], t.Datastore)
+
+		*parent = sha3.Sum256(hashBytes[:pos])
 		parent.MarkInternal()
 		t.NumHashes++
 

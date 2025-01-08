@@ -228,10 +228,8 @@ func BenchmarkHash(b *testing.B) {
 		pos := copy(buf, "key-")
 		binary.BigEndian.PutUint64(buf[pos:], uint64(keyIdx))
 		hasher.Write(buf[:pos+8])
-		hash := hasher.Sum(nil)
+		hasher.Sum(buf[:0])
 		hasher.Reset()
-
-		copy(buf, hash)
 	}
 
 	tr := NewTree()
