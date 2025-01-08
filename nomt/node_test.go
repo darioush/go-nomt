@@ -8,7 +8,7 @@ import (
 
 func TestChunkIndexAsInt(t *testing.T) {
 	chunkIdx := ChunkIndex([4]byte{1, 0, 1, 0})
-	require.Equal(t, int(0x01000100), chunkIdx.AsInt())
+	require.Equal(t, uint32(0x01000100), chunkIdx.AsInt())
 }
 
 func TestLeafNodeChunks(t *testing.T) {
