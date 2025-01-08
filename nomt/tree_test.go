@@ -51,6 +51,7 @@ func TestPutGet(t *testing.T) {
 		"foo01", "foo02", "foo03", "foo04", "foo05", "foo06", "foo07",
 	}
 
+	lastHashes := uint64(0)
 	for i, k := range keys {
 		key := []byte(k)
 		value := []byte(values[i])
@@ -61,6 +62,10 @@ func TestPutGet(t *testing.T) {
 		require.True(t, ok, "key %s", k)
 
 		require.Equal(t, value, val)
+
+		hash := tr.Hash([][]byte{key})
+		t.Logf("Hashes: %d Root: %x", tr.NumHashes-uint64(lastHashes), hash)
+		lastHashes = tr.NumHashes
 	}
 }
 
@@ -177,7 +182,6 @@ func BenchmarkPut(b *testing.B) {
 			}
 		})
 	}
-
 }
 
 func BenchmarkGet(b *testing.B) {

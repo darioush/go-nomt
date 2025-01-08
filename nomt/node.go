@@ -2,6 +2,8 @@ package nomt
 
 import (
 	"bytes"
+	"hash"
+	"unsafe"
 )
 
 type (
@@ -13,6 +15,30 @@ func (c *ChunkIndex) AsInt() uint32 {
 	return uint32(c[0])<<24 | uint32(c[1])<<16 | uint32(c[2])<<8 | uint32(c[3])
 }
 
+func (n *Node) AsLeafNode() *LeafNode {
+	return (*LeafNode)(unsafe.Pointer(n))
+}
+
+func (n *Node) HashInto(h hash.Hash, d *Datastore) {
+	if !n.IsLeaf() {
+		h.Write(n[:])
+		return
+	}
+
+	var (
+		keyBuf   [MaxKeyLen]byte
+		valueBuf [MaxValueLen]byte
+	)
+	key, value := keyBuf[:], valueBuf[:]
+	leaf := n.AsLeafNode()
+	key = leaf.GetKey(key, d)
+	value = leaf.GetValue(value, d)
+	h.Write([]byte{leaf.KeyLen})
+	h.Write([]byte{leaf.ValueLen})
+	h.Write(key)
+	h.Write(value)
+}
+
 func (n *Node) IsLeaf() bool {
 	// Leaf nodes have most significant bit set to 0.
 	return n[0]>>7 == 0
@@ -22,8 +48,8 @@ func (n *Node) IsZero() bool {
 	return bytes.Equal(n[:], Zero[:])
 }
 
-func (n *Node) MarkDirty() {
-	// Mark the node as dirty by setting the most significant bit to 1.
+func (n *Node) MarkInternal() {
+	// Mark the node as internal by setting the most significant bit to 1.
 	// This means it cannot be a leaf node.
 	n[0] |= 0x80
 }

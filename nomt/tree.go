@@ -3,11 +3,11 @@ package nomt
 import (
 	"bytes"
 	"fmt"
-	"unsafe"
 )
 
 const (
 	MaxKeyLen       = 64
+	MaxValueLen     = 255
 	MaxKeyLenPadded = (MaxKeyLen*8 + 5) / 6
 )
 
@@ -76,9 +76,10 @@ func indexOf(query byte, bitLen byte) byte {
 }
 
 type Tree struct {
-	Root      [32]byte
+	Root      Node
 	Pages     map[string]*Page // TODO: consider indexing into an array of pages
 	Datastore *Datastore
+	NumHashes uint64
 }
 
 func NewTree() *Tree {
@@ -124,7 +125,7 @@ func (t *Tree) Get(key []byte, valBuf []byte) ([]byte, bool) {
 
 	var keyBuf [MaxKeyLen]byte
 	foundKey := keyBuf[:]
-	leaf := (*LeafNode)(unsafe.Pointer(node))
+	leaf := node.AsLeafNode()
 	foundKey = leaf.GetKey(foundKey, t.Datastore)
 	if !bytes.Equal(foundKey, key) {
 		return nil, false
@@ -171,7 +172,7 @@ func (t *Tree) Put(key, value []byte) {
 	if pathLen == 0 {
 		// Create a new leaf node at pathLen+1
 		ptr := getOrAllocate(paddedKey, pathLen)
-		leafNode := (*LeafNode)(unsafe.Pointer(ptr))
+		leafNode := ptr.AsLeafNode()
 		leafNode.PutKeyValue(key, value, t.Datastore)
 		return
 	}
@@ -179,14 +180,14 @@ func (t *Tree) Put(key, value []byte) {
 	node := &page.Nodes[indexOf(paddedKey[pageIdx], pathLen)]
 	if !node.IsLeaf() {
 		ptr := getOrAllocate(paddedKey, pathLen)
-		leafNode := (*LeafNode)(unsafe.Pointer(ptr))
+		leafNode := ptr.AsLeafNode()
 		leafNode.PutKeyValue(key, value, t.Datastore)
 		return
 	}
 
 	var keyBuf [MaxKeyLen]byte
 	foundKey := keyBuf[:]
-	leaf := (*LeafNode)(unsafe.Pointer(node))
+	leaf := node.AsLeafNode()
 	foundKey = leaf.GetKey(foundKey, t.Datastore)
 	if bytes.Equal(foundKey, key) {
 		leaf.PutValue(value, t.Datastore)
@@ -209,18 +210,18 @@ func (t *Tree) Put(key, value []byte) {
 		if paddedKey[pageIdx]&(1<<(fullBits-pathLen-1)) != foundKeyPadded[pageIdx]&(1<<(fullBits-pathLen-1)) {
 			break
 		}
-		nextNode.MarkDirty()
+		nextNode.MarkInternal()
 		pathLen++
 	}
 	// At pathLen, the keys differ.
 	// Note keys MUST not be prefixes of each other.
-	leafNode := (*LeafNode)(unsafe.Pointer(nextNode))
+	leafNode := nextNode.AsLeafNode()
 	leafNode.PutKeyValue(key, value, t.Datastore)
 
 	copyNode := getOrAllocate(foundKeyPadded, pathLen)
 	*copyNode = *node
 
-	node.MarkDirty() // Mark the old leaf node as dirty (internal node)
+	node.MarkInternal() // Mark the old leaf node internal
 }
 
 func (t *Tree) print() {
