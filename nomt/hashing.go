@@ -62,7 +62,7 @@ func (t *Tree) hash(h hash.Hash, key []byte, hashFrom int) {
 	page := t.Pages[""] // start at the root
 	for pageIdx < len(paddedKey)-1 {
 		// If this node is not set, the continuation page does not exist.
-		node := page.Nodes[indexOf(paddedKey[pageIdx], fullBits)]
+		node := &page.Nodes[indexOf(paddedKey[pageIdx], fullBits)]
 		if node.IsZero() || node.IsLeaf() {
 			break
 		}
@@ -118,9 +118,9 @@ func (t *Tree) hash(h hash.Hash, key []byte, hashFrom int) {
 		}
 		node0.HashInto(h, t.Datastore)
 		node1.HashInto(h, t.Datastore)
-		hash := h.Sum(nil)
+		hash := parent[:]
+		h.Sum(hash[:0])
 		h.Reset()
-		copy(parent[:], hash)
 		parent.MarkInternal()
 		t.NumHashes++
 

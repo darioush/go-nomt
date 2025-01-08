@@ -102,7 +102,7 @@ func (t *Tree) Get(key []byte, valBuf []byte) ([]byte, bool) {
 	page := t.Pages[""] // start at the root
 	for pageIdx < len(paddedKey)-1 {
 		// If this node is not set, the continuation page does not exist.
-		node := page.Nodes[indexOf(paddedKey[pageIdx], fullBits)]
+		node := &page.Nodes[indexOf(paddedKey[pageIdx], fullBits)]
 		if node.IsZero() || node.IsLeaf() {
 			break
 		}
@@ -144,7 +144,7 @@ func (t *Tree) Put(key, value []byte) {
 	page := t.Pages[""] // start at the root
 	for pageIdx < len(paddedKey)-1 {
 		// If this node is not set, the continuation page does not exist.
-		node := page.Nodes[indexOf(paddedKey[pageIdx], fullBits)]
+		node := &page.Nodes[indexOf(paddedKey[pageIdx], fullBits)]
 		if node.IsZero() || node.IsLeaf() {
 			break
 		}
