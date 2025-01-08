@@ -217,5 +217,64 @@ func BenchmarkGet(b *testing.B) {
 			}
 		})
 	}
+}
 
+func BenchmarkHash(b *testing.B) {
+	hasher := sha3.NewLegacyKeccak256()
+
+	getKey := func(keyIdx int, buf []byte) {
+		pos := copy(buf, "key-")
+		binary.BigEndian.PutUint64(buf[pos:], uint64(keyIdx))
+		hasher.Write(buf[:pos+8])
+		hash := hasher.Sum(nil)
+		hasher.Reset()
+
+		copy(buf, hash)
+	}
+
+	tr := NewTree()
+	currentSize := 0
+	for _, initialSize := range []int{100, 1_000, 10_000, 100_000, 1_000_000, 4_000_000, 16_000_000, 32_000_000, 64_000_000} {
+		r := rand.New(rand.NewSource(1))
+		const initialBatchSize = 20000
+		var keyBatchBuf [initialBatchSize][32]byte
+		var keyBatch [initialBatchSize][]byte
+		b.Logf("Creating initial trie: %d -> %d", currentSize, initialSize)
+		for i := currentSize; i < initialSize; i++ {
+			keyBatch[i%initialBatchSize] = keyBatchBuf[i%initialBatchSize][:]
+			keyBuf := keyBatch[i%initialBatchSize]
+			getKey(i, keyBuf[:])
+			tr.Put(keyBuf[:], keyBuf[:])
+			currentSize++
+
+			if i%initialBatchSize == initialBatchSize-1 {
+				tr.Hash(keyBatch[:])
+			}
+
+			if currentSize%250_000 == 0 {
+				b.Logf("Size: %d", currentSize)
+			}
+		}
+
+		// batchSize must not be greater than initialBatchSize
+		for _, batchSize := range []int{10, 100, 200, 500, 1000} {
+			b.Run(fmt.Sprintf("InitialSize-%d-BatchSize-%d", initialSize, batchSize), func(b *testing.B) {
+				b.ResetTimer()
+				for i := 0; i < b.N; i++ {
+					var value [32]byte
+					r.Read(value[:])
+					keyBatch[i%batchSize] = keyBatchBuf[i%batchSize][:]
+					keyBuf := keyBatch[i%batchSize]
+					getKey(i%initialSize, keyBuf[:])
+					tr.Put(keyBuf[:], value[:])
+
+					if i%batchSize == batchSize-1 {
+						tr.Hash(keyBatch[:batchSize])
+					} else if i+1 == b.N {
+						tr.Hash(keyBatch[:i%batchSize+1])
+					}
+				}
+			})
+		}
+	}
 }
