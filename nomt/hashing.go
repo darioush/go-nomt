@@ -106,7 +106,7 @@ func (t *Tree) hash(key []byte, hashFrom int) {
 			pathLen = fullBits
 		}
 		parent := &t.Root
-		parentIdx := byte(0)
+		parentIdx := 0
 		atRoot := pageIdx == 0 && pathLen == 0
 		if !atRoot {
 			parentIdx = indexOf(paddedKey[pageIdx], pathLen)

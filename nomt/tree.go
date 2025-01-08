@@ -70,9 +70,9 @@ func PadKey(key, out []byte) ([]byte, int) {
 }
 
 // indexOf returns the index of the query byte in the page array.
-func indexOf(query byte, bitLen byte) byte {
+func indexOf(query byte, bitLen byte) int {
 	idx := 1<<bitLen | (query >> (fullBits - bitLen)) // TODO: see if we should change the partial byte format to avoid this shift
-	return idx - 2
+	return int(idx - 2)
 }
 
 type Tree struct {

@@ -253,7 +253,7 @@ func BenchmarkHash(b *testing.B) {
 			}
 
 			if currentSize%1_000_000 == 0 {
-				b.Logf("Size: %d", currentSize)
+				b.Logf("Size: %d, pages: %d (=%d G)", currentSize, len(tr.Pages), (len(tr.Pages)*4096)>>30)
 			}
 		}
 
@@ -261,6 +261,7 @@ func BenchmarkHash(b *testing.B) {
 		for _, batchSize := range []int{10, 100, 200, 500, 1000, 10_000, 40_000} {
 			b.Run(fmt.Sprintf("InitialSize-%d-BatchSize-%d", initialSize, batchSize), func(b *testing.B) {
 				b.ResetTimer()
+				b.ReportMetric(float64(len(tr.Pages)), "pages")
 				for i := 0; i < b.N; i++ {
 					var value [32]byte
 					r.Read(value[:])

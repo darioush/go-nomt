@@ -2,7 +2,6 @@ package nomt
 
 import (
 	"bytes"
-	"hash"
 	"unsafe"
 )
 
@@ -17,26 +16,6 @@ func (c *ChunkIndex) AsInt() uint32 {
 
 func (n *Node) AsLeafNode() *LeafNode {
 	return (*LeafNode)(unsafe.Pointer(n))
-}
-
-func (n *Node) HashInto(h hash.Hash, d *Datastore) {
-	if !n.IsLeaf() {
-		h.Write(n[:])
-		return
-	}
-
-	var (
-		keyBuf   [MaxKeyLen]byte
-		valueBuf [MaxValueLen]byte
-	)
-	key, value := keyBuf[:], valueBuf[:]
-	leaf := n.AsLeafNode()
-	key = leaf.GetKey(key, d)
-	value = leaf.GetValue(value, d)
-	h.Write([]byte{leaf.KeyLen})
-	h.Write([]byte{leaf.ValueLen})
-	h.Write(key)
-	h.Write(value)
 }
 
 func (n *Node) HashBytes(out []byte, d *Datastore) int {
