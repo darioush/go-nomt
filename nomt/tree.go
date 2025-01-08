@@ -91,14 +91,10 @@ func NewTree() *Tree {
 	}
 }
 
-func (t *Tree) Get(key []byte, valBuf []byte) ([]byte, bool) {
-	var paddedKeyBuf [MaxKeyLenPadded]byte
-	paddedKey := paddedKeyBuf[:]
-	paddedKey, partialBits := PadKey(key, paddedKey)
-	pageIdx := 0
+func (t *Tree) lookup(paddedKey []byte, partialBits int) (int, byte, *Page) {
 	// The last byte in the padded key always indexes into the page.
 	// This page may be the root page or a page with a path that is a prefix of the key.
-
+	pageIdx := 0
 	page := t.Pages[""] // start at the root
 	for pageIdx < len(paddedKey)-1 {
 		// If this node is not set, the continuation page does not exist.
@@ -115,6 +111,14 @@ func (t *Tree) Get(key []byte, valBuf []byte) ([]byte, bool) {
 		bits = byte(fullBits - partialBits)
 	}
 	pathLen := page.nonZeroPathBitLen(paddedKey[pageIdx], bits)
+	return pageIdx, pathLen, page
+}
+
+func (t *Tree) Get(key []byte, valBuf []byte) ([]byte, bool) {
+	var paddedKeyBuf [MaxKeyLenPadded]byte
+	paddedKey := paddedKeyBuf[:]
+	paddedKey, partialBits := PadKey(key, paddedKey)
+	pageIdx, pathLen, page := t.lookup(paddedKey, partialBits)
 	if pathLen == 0 {
 		return nil, false
 	}
@@ -137,25 +141,8 @@ func (t *Tree) Put(key, value []byte) {
 	var paddedKeyBuf [MaxKeyLenPadded]byte
 	paddedKey := paddedKeyBuf[:]
 	paddedKey, partialBits := PadKey(key, paddedKey)
-	pageIdx := 0
-	// The last byte in the padded key always indexes into the page.
-	// This page may be the root page or a page with a path that is a prefix of the key.
+	pageIdx, pathLen, page := t.lookup(paddedKey, partialBits)
 
-	page := t.Pages[""] // start at the root
-	for pageIdx < len(paddedKey)-1 {
-		// If this node is not set, the continuation page does not exist.
-		node := &page.Nodes[indexOf(paddedKey[pageIdx], fullBits)]
-		if node.IsZero() || node.IsLeaf() {
-			break
-		}
-		pageIdx++
-		page = t.Pages[string(paddedKey[:pageIdx])]
-	}
-
-	bits := byte(fullBits)
-	if pageIdx == len(paddedKey)-1 {
-		bits = byte(fullBits - partialBits)
-	}
 	getOrAllocate := func(paddedKey []byte, pathLen byte) *Node {
 		if pathLen == fullBits {
 			// Need a new page
@@ -168,7 +155,6 @@ func (t *Tree) Put(key, value []byte) {
 		return &page.Nodes[indexOf(paddedKey[pageIdx], pathLen+1)]
 	}
 
-	pathLen := page.nonZeroPathBitLen(paddedKey[pageIdx], bits)
 	if pathLen == 0 {
 		// Create a new leaf node at pathLen+1
 		ptr := getOrAllocate(paddedKey, pathLen)

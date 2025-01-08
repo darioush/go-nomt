@@ -52,25 +52,8 @@ func (t *Tree) hash(key []byte, hashFrom int) {
 	var paddedKeyBuf [MaxKeyLenPadded]byte
 	paddedKey := paddedKeyBuf[:]
 	paddedKey, partialBits := PadKey(key, paddedKey)
-	pageIdx := 0
+	pageIdx, pathLen, page := t.lookup(paddedKey, partialBits)
 
-	// Find the first node that needs to be updated.
-	page := t.Pages[""] // start at the root
-	for pageIdx < len(paddedKey)-1 {
-		// If this node is not set, the continuation page does not exist.
-		node := &page.Nodes[indexOf(paddedKey[pageIdx], fullBits)]
-		if node.IsZero() || node.IsLeaf() {
-			break
-		}
-		pageIdx++
-		page = t.Pages[string(paddedKey[:pageIdx])]
-	}
-
-	bits := byte(fullBits)
-	if pageIdx == len(paddedKey)-1 {
-		bits = byte(fullBits - partialBits)
-	}
-	pathLen := page.nonZeroPathBitLen(paddedKey[pageIdx], bits)
 	// pathLen == 0 is not valid (key must be in the tree).
 
 	nodeIdx := indexOf(paddedKey[pageIdx], pathLen)
