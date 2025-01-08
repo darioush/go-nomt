@@ -1,8 +1,11 @@
 package nomt
 
 import (
-	"bytes"
 	"unsafe"
+)
+
+const (
+	LeafNodeMarker = 0x02
 )
 
 type (
@@ -20,7 +23,7 @@ func (n *Node) AsLeafNode() *LeafNode {
 
 func (n *Node) HashBytes(out []byte, d *Datastore) int {
 	pos := 0
-	if !n.IsLeaf() {
+	if n.IsHash() {
 		pos += copy(out, n[:])
 		return pos
 	}
@@ -36,13 +39,16 @@ func (n *Node) HashBytes(out []byte, d *Datastore) int {
 	return pos
 }
 
-func (n *Node) IsLeaf() bool {
-	// Leaf nodes have most significant bit set to 0.
-	return n[0]>>7 == 0
+func (n *Node) IsHash() bool {
+	// Hash nodes have MSB set to 1.
+	return n[0]&0x80 != 0
 }
 
 func (n *Node) IsZero() bool {
-	return bytes.Equal(n[:], Zero[:])
+	// Zero nodes set all bits to 0.
+	// Hash nodes set n[0]'s MSB to 1.
+	// Leaf nodes set n[0] 0x02.
+	return n[0] == 0
 }
 
 func (n *Node) MarkInternal() {
@@ -52,11 +58,11 @@ func (n *Node) MarkInternal() {
 }
 
 type LeafNode struct {
-	_        byte // ignored
-	KeyLen   byte
-	ValueLen byte
-	Chunks   [7]ChunkIndex
-	_        [1]byte // ignored
+	NodeMarker byte // must be 0x02.
+	KeyLen     byte
+	ValueLen   byte
+	Chunks     [7]ChunkIndex
+	_          [1]byte // ignored
 }
 
 func (l *LeafNode) get(buf []byte, startChunk, chunkPos int, length int, db *Datastore) {
@@ -121,6 +127,7 @@ func (l *LeafNode) PutKeyValue(key, value []byte, db *Datastore) {
 		numChunks(len(key), len(value)),
 		db,
 	)
+	l.NodeMarker = LeafNodeMarker
 	l.KeyLen = byte(len(key))
 	l.ValueLen = byte(len(value))
 

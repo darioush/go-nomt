@@ -99,7 +99,7 @@ func (t *Tree) lookup(paddedKey []byte, partialBits int) (int, byte, *Page) {
 	for pageIdx < len(paddedKey)-1 {
 		// If this node is not set, the continuation page does not exist.
 		node := &page.Nodes[indexOf(paddedKey[pageIdx], fullBits)]
-		if node.IsZero() || node.IsLeaf() {
+		if node.IsZero() || !node.IsHash() {
 			break
 		}
 		pageIdx++
@@ -123,7 +123,7 @@ func (t *Tree) Get(key []byte, valBuf []byte) ([]byte, bool) {
 		return nil, false
 	}
 	node := &page.Nodes[indexOf(paddedKey[pageIdx], pathLen)]
-	if !node.IsLeaf() {
+	if node.IsHash() {
 		return nil, false
 	}
 
@@ -164,7 +164,7 @@ func (t *Tree) Put(key, value []byte) {
 	}
 
 	node := &page.Nodes[indexOf(paddedKey[pageIdx], pathLen)]
-	if !node.IsLeaf() {
+	if node.IsHash() {
 		ptr := getOrAllocate(paddedKey, pathLen)
 		leafNode := ptr.AsLeafNode()
 		leafNode.PutKeyValue(key, value, t.Datastore)
